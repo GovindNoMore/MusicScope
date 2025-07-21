@@ -82,7 +82,16 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, onReset }) => 
                   <div className="w-20 h-20 mx-auto mb-4 rounded-full overflow-hidden bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white font-bold text-xl">
                     {artist.name.charAt(0).toUpperCase()}
                   </div>
-                  <h4 className="font-semibold text-white mb-2">{artist.name}</h4>
+                  <img
+                    src={artist.image || '/fallback.png'}
+                    alt={artist.name}
+                    className="w-24 h-24 rounded-full object-cover mb-2"
+                  />
+                  <h4 className="font-semibold text-white mb-2">
+                    <a href={artist.spotifyUrl} target="_blank" rel="noopener noreferrer">
+                      {artist.name}
+                    </a>
+                  </h4>
                   <div className="flex flex-wrap gap-1 justify-center">
                     {artist.genres.slice(0, 3).map((genre, genreIndex) => (
                       <span
@@ -165,16 +174,26 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, onReset }) => 
               </div>
               <p className="text-white/70 mb-6">Underrated artists you might love</p>
               <div className="grid grid-cols-2 gap-4">
-                {results.underrated_recommendations.map((rec, index) => (
-                  <div
-                    key={index}
-                    className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/20 transition-all duration-300 border border-white/10 hover:border-yellow-400/50"
+                {results.underrated_recommendations.map((artist, index) => (
+                  <a
+                    key={artist.spotifyUrl || index}
+                    href={artist.spotifyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/20 transition-all duration-300 border border-white/10 hover:border-yellow-400/50 block"
                   >
-                    <div className="w-16 h-16 mx-auto mb-3 rounded-full overflow-hidden bg-gradient-to-r from-yellow-500 to-orange-500 flex items-center justify-center text-white font-bold">
-                      {rec.name.charAt(0).toUpperCase()}
+                    <img
+                      src={artist.image || '/fallback.png'}
+                      alt={artist.name}
+                      className="w-16 h-16 mx-auto mb-3 rounded-full object-cover"
+                    />
+                    <h4 className="font-medium text-white text-sm">{artist.name}</h4>
+                    <div className="flex flex-wrap gap-1 justify-center mt-1">
+                      {artist.genres?.slice(0, 3).map((genre) => (
+                        <span key={genre} className="text-xs bg-white/20 text-white px-2 py-1 rounded-full">{genre}</span>
+                      ))}
                     </div>
-                    <h4 className="font-medium text-white text-sm">{rec.name}</h4>
-                  </div>
+                  </a>
                 ))}
               </div>
             </div>
@@ -187,16 +206,26 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, onReset }) => 
               </div>
               <p className="text-white/70 mb-6">Popular artists in your genres</p>
               <div className="grid grid-cols-2 gap-4">
-                {results.popular_recommendations.map((rec, index) => (
-                  <div
+                {results.popular_recommendations.map((artist, index) => (
+                  <a
                     key={index}
-                    className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/20 transition-all duration-300 border border-white/10 hover:border-red-400/50"
+                    href={artist.spotifyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block bg-white/10 rounded-xl p-4 text-center hover:bg-white/20 transition-all duration-300 border border-white/10 hover:border-green-400/50"
                   >
-                    <div className="w-16 h-16 mx-auto mb-3 rounded-full overflow-hidden bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center text-white font-bold">
-                      {rec.name.charAt(0).toUpperCase()}
+                    <img
+                      src={artist.image || '/fallback.png'}
+                      alt={artist.name}
+                      className="w-16 h-16 mx-auto mb-3 rounded-full object-cover"
+                    />
+                    <h4 className="font-medium text-white text-sm">{artist.name}</h4>
+                    <div className="flex flex-wrap gap-1 justify-center mt-1">
+                      {artist.genres.slice(0, 3).map((genre) => (
+                        <span key={genre} className="text-xs bg-white/20 text-white px-2 py-1 rounded-full">{genre}</span>
+                      ))}
                     </div>
-                    <h4 className="font-medium text-white text-sm">{rec.name}</h4>
-                  </div>
+                  </a>
                 ))}
               </div>
             </div>

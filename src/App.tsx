@@ -4,124 +4,269 @@ import type { AnalysisResult } from './types/music';
 import MusicForm from './components/MusicForm';
 import ResultsDisplay from './components/ResultsDisplay';
 import LoadingOverlay from './components/LoadingOverlay';
+import { getSpotifyToken, searchArtist } from './services/spotify';
+import AboutSection from './components/AboutSection';
+import AnalyzeSection from './components/AnalyzeSection';
+import DiscoverSection from './components/DiscoverSection';
 
 function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [results, setResults] = useState<AnalysisResult | null>(null);
+  const [dialogOpen, setDialogOpen] = useState<null | 'about' | 'analyze' | 'discover'>(null);
+
+  // Function to get related artists using Spotify's related artists endpoint
+  const getRelatedArtists = async (token: string, artistId: string) => {
+    try {
+      const response = await fetch(
+        `https://api.spotify.com/v1/artists/${artistId}/related-artists`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        console.error('Related artists API error:', response.status);
+        return [];
+      }
+      
+      const data = await response.json();
+      return data.artists || [];
+    } catch (error) {
+      console.error('Error fetching related artists:', error);
+      return [];
+    }
+  };
+
+  // Function to search artists by genre more intelligently
+  const searchArtistsByGenre = async (token: string, genre: string, limit: number = 10) => {
+    try {
+      // More specific genre-based queries
+      const queries = [
+        `genre:"${genre}"`,
+        `genre:${genre.replace(/\s+/g, '-')}`,  // Handle multi-word genres
+        genre // Fallback to simple genre search
+      ];
+      
+      for (const query of queries) {
+        const response = await fetch(
+          `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=${limit}&market=US`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          const artists = data.artists?.items || [];
+          
+          // Filter artists that actually have the genre
+          const filteredArtists = artists.filter((artist: any) => 
+            artist.genres && artist.genres.some((g: string) => 
+              g.toLowerCase().includes(genre.toLowerCase()) ||
+              genre.toLowerCase().includes(g.toLowerCase())
+            )
+          );
+          
+          if (filteredArtists.length > 0) {
+            return filteredArtists;
+          }
+        }
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error searching artists by genre:', error);
+      return [];
+    }
+  };
+
+  // Updated main recommendation function
+  const getRecommendedArtists = async (token: string, userArtistData: any[], topGenres: string[]) => {
+    const recommendations: any[] = [];
+    const excludeIds = new Set(userArtistData.map(a => a.id).filter(Boolean));
+    const excludeNames = new Set(userArtistData.map(a => a.name.toLowerCase()));
+
+    console.log('Getting recommendations for genres:', topGenres);
+    console.log('Excluding artist IDs:', Array.from(excludeIds));
+
+    // 1. Get related artists from user's artists (most accurate method)
+    console.log('Fetching related artists...');
+    for (const artist of userArtistData) {
+      if (recommendations.length >= 20) break;
+      
+      if (artist.id) {
+        const relatedArtists = await getRelatedArtists(token, artist.id);
+        console.log(`Found ${relatedArtists.length} related artists for ${artist.name}`);
+        
+        const filteredRelated = relatedArtists.filter((relArtist: any) => 
+          !excludeIds.has(relArtist.id) &&
+          !excludeNames.has(relArtist.name.toLowerCase()) &&
+          !recommendations.some(rec => rec.id === relArtist.id) &&
+          relArtist.images && relArtist.images.length > 0 &&
+          relArtist.popularity > 15
+        );
+        
+        recommendations.push(...filteredRelated.slice(0, 3));
+      }
+    }
+
+    console.log(`Got ${recommendations.length} related artists`);
+
+    // 2. Search by specific genres if we need more recommendations
+    if (recommendations.length < 15 && topGenres.length > 0) {
+      console.log('Searching by genres...');
+      
+      for (const genre of topGenres) {
+        if (recommendations.length >= 20) break;
+        
+        const genreArtists = await searchArtistsByGenre(token, genre, 15);
+        console.log(`Found ${genreArtists.length} artists for genre: ${genre}`);
+        
+        const filteredGenreArtists = genreArtists.filter((artist: any) => 
+          !excludeIds.has(artist.id) &&
+          !excludeNames.has(artist.name.toLowerCase()) &&
+          !recommendations.some(rec => rec.id === artist.id) &&
+          artist.images && artist.images.length > 0 &&
+          artist.popularity > 20
+        );
+        
+        recommendations.push(...filteredGenreArtists.slice(0, 4));
+      }
+    }
+
+    console.log(`Final recommendations count: ${recommendations.length}`);
+    return recommendations.slice(0, 15);
+  };
 
   const handleAnalysis = async (language: string, artists: string[]) => {
     setIsAnalyzing(true);
-    
-    // Simulate realistic analysis with proper delay
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    
-    // Generate realistic mock results
-    const genreDatabase: { [key: string]: string[] } = {
-      'radiohead': ['alternative', 'rock', 'experimental', 'electronic'],
-      'kendrick lamar': ['hip-hop', 'conscious rap', 'experimental', 'jazz'],
-      'tame impala': ['psychedelic', 'indie', 'electronic', 'rock'],
-      'phoebe bridgers': ['indie', 'folk', 'alternative', 'singer-songwriter'],
-      'taylor swift': ['pop', 'country', 'folk', 'alternative'],
-      'drake': ['hip-hop', 'r&b', 'pop', 'trap'],
-      'billie eilish': ['pop', 'alternative', 'electropop', 'indie'],
-      'arctic monkeys': ['indie', 'rock', 'alternative', 'garage rock'],
-      'frank ocean': ['r&b', 'hip-hop', 'experimental', 'soul'],
-      'bon iver': ['indie', 'folk', 'experimental', 'ambient'],
-      'the beatles': ['rock', 'pop', 'psychedelic', 'classic rock'],
-      'kanye west': ['hip-hop', 'experimental', 'electronic', 'gospel'],
-      'lorde': ['pop', 'indie', 'electropop', 'alternative'],
-      'mac miller': ['hip-hop', 'alternative', 'jazz', 'soul'],
-      'clairo': ['indie', 'pop', 'bedroom pop', 'lo-fi'],
-      'tyler the creator': ['hip-hop', 'experimental', 'alternative', 'r&b'],
-      'vampire weekend': ['indie', 'pop', 'alternative', 'afrobeat'],
-      'car seat headrest': ['indie', 'rock', 'alternative', 'lo-fi'],
-      'beach house': ['dream pop', 'shoegaze', 'indie', 'ambient'],
-      'grimes': ['electronic', 'experimental', 'pop', 'synth-pop']
-    };
 
-    // Generate artist data with genres
-    const artistData = artists.map(artist => {
-      const normalizedName = artist.toLowerCase().trim();
-      const genres = genreDatabase[normalizedName] || ['indie', 'alternative', 'rock'];
+    try {
+      console.log('Starting analysis for:', { language, artists });
       
-      return {
-        name: artist,
-        genres: genres.slice(0, 3),
-        image: `https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop`
-      };
-    });
+      const token = await getSpotifyToken();
+      console.log('Got Spotify token:', token ? 'Success' : 'Failed');
+      
+      // Fetch Spotify data for each artist
+      const artistData = await Promise.all(
+        artists.map(async (name) => {
+          try {
+            console.log('Searching for artist:', name);
+            const artist = await searchArtist(name, token);
+            if (!artist) {
+              console.log('Artist not found:', name);
+              return null;
+            }
+            console.log('Found artist:', artist.name, 'ID:', artist.id, 'Image:', artist.images?.[0]?.url);
+            return {
+              id: artist.id, // IMPORTANT: Include the ID for related artists
+              name: artist.name || "Unknown Artist",
+              genres: artist.genres || [],
+              image: artist.images?.[0]?.url || '', 
+              spotifyUrl: artist.external_urls?.spotify || '#',
+              popularity: artist.popularity ?? 0,
+            };
+          } catch (error) {
+            console.error('Error searching for artist:', name, error);
+            return null;
+          }
+        })
+      );
 
-    // Calculate genre distribution
-    const allGenres: string[] = [];
-    artistData.forEach(artist => allGenres.push(...artist.genres));
-    
-    const genreCounts: { [key: string]: number } = {};
-    allGenres.forEach(genre => {
-      genreCounts[genre] = (genreCounts[genre] || 0) + 1;
-    });
+      // Filter out any nulls (artists not found)
+      const validArtists = artistData.filter(Boolean) as Array<
+        NonNullable<typeof artistData[number]>
+      >;
 
-    const totalGenres = allGenres.length;
-    const genreDistribution = Object.entries(genreCounts)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 6)
-      .map(([genre, count]) => ({
-        genre: genre.charAt(0).toUpperCase() + genre.slice(1),
+      console.log('Valid artists found:', validArtists.length);
+      console.log('Valid artists:', validArtists.map(a => ({ name: a.name, id: a.id, genres: a.genres })));
+
+      if (validArtists.length === 0) {
+        console.log('No artists found on Spotify. Please check your Spotify API credentials.');
+        alert('No artists found on Spotify. Please check your Spotify API credentials.');
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Collect all genres for genre distribution
+      const allGenres = validArtists.flatMap((a) => a.genres);
+      const genreCounts = allGenres.reduce((acc, genre) => {
+        acc[genre] = (acc[genre] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const genreDistribution = Object.entries(genreCounts).map(([genre, count]) => ({
+        genre,
         count,
-        percentage: Math.round((count / totalGenres) * 100)
+        percentage: Math.round((count / allGenres.length) * 100),
       }));
 
-    const dominantGenres = Object.entries(genreCounts)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3)
-      .map(([genre]) => genre.charAt(0).toUpperCase() + genre.slice(1));
+      const topGenres = genreDistribution
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map(g => g.genre);
+        
+      console.log('Top genres:', topGenres);
 
-    // Generate taste profile
-    const hasExperimental = allGenres.some(g => ['experimental', 'ambient', 'electronic'].includes(g));
-    const hasIndie = allGenres.some(g => ['indie', 'alternative', 'folk'].includes(g));
-    const hasMainstream = allGenres.some(g => ['pop', 'rock', 'hip-hop'].includes(g));
-    
-    let tasteProfile = '';
-    if (hasExperimental) {
-      tasteProfile = '🔬 EXPERIMENTAL EXPLORER: You actively seek boundary-pushing, avant-garde music!';
-    } else if (hasIndie && !hasMainstream) {
-      tasteProfile = '🎸 INDIE CONNOISSEUR: You have refined taste for independent, alternative music!';
-    } else if (hasMainstream) {
-      tasteProfile = '🌟 CULTURAL CONNECTOR: You appreciate widely-loved, influential music!';
-    } else {
-      tasteProfile = '🎵 ECLECTIC CURATOR: You have beautifully diverse musical taste!';
+      // Get recommended artists using improved logic
+      const recommendedArtists = await getRecommendedArtists(
+        token, 
+        validArtists, // Pass full artist data including IDs
+        topGenres
+      );
+      
+      console.log('Recommended artists found:', recommendedArtists.length);
+      console.log('Sample recommendations:', recommendedArtists.slice(0, 3).map(a => ({ 
+        name: a.name, 
+        genres: a.genres?.slice(0, 2), 
+        popularity: a.popularity 
+      })));
+
+      // Process recommended artists
+      const processedRecommendations = recommendedArtists.map(artist => ({
+        id: artist.id,
+        name: artist.name || "Unknown Artist",
+        genres: artist.genres || [],
+        image: artist.images?.[0]?.url || '', // Should now have images
+        spotifyUrl: artist.external_urls?.spotify || '#',
+        popularity: artist.popularity ?? 0,
+      }));
+
+      // Split recommendations into popular and underrated based on popularity
+      const sortedRecommendations = [...processedRecommendations].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+      const popular_recommendations = sortedRecommendations.slice(0, Math.ceil(sortedRecommendations.length / 2));
+      const underrated_recommendations = sortedRecommendations.slice(Math.ceil(sortedRecommendations.length / 2));
+
+      // Generate a more detailed taste profile
+      const avgPopularity = Math.round(validArtists.reduce((sum, a) => sum + (a.popularity || 0), 0) / validArtists.length);
+      const taste_profile = topGenres.length > 0 
+        ? `Your taste centers around ${topGenres.slice(0, 3).join(', ')} with ${avgPopularity > 70 ? 'mainstream' : avgPopularity > 40 ? 'moderately popular' : 'underground/indie'} preferences.`
+        : 'Your taste profile is diverse and eclectic!';
+
+      const results: AnalysisResult = {
+        language,
+        artists_analyzed: validArtists.length,
+        artist_data: validArtists,
+        genre_distribution: genreDistribution,
+        dominant_genres: topGenres,
+        taste_profile,
+        underrated_recommendations,
+        popular_recommendations,
+        total_genres_found: Object.keys(genreCounts).length,
+      };
+
+      console.log('Analysis complete:', results);
+      setResults(results);
+    } catch (error) {
+      console.error('Error during analysis:', error);
+      alert('An error occurred during analysis. Please check the console for details.');
+    } finally {
+      setIsAnalyzing(false);
     }
-
-    // Generate recommendations
-    const underratedRecs = [
-      'Phoebe Bridgers', 'Big Thief', 'Car Seat Headrest', 'Clairo',
-      'Black Midi', 'Fontaines D.C.', 'Little Simz', 'JPEGMAFIA'
-    ].slice(0, 6).map(name => ({
-      name,
-      image: `https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop`
-    }));
-
-    const popularRecs = [
-      'Arctic Monkeys', 'The Strokes', 'Vampire Weekend', 'Tame Impala',
-      'Radiohead', 'Kendrick Lamar'
-    ].slice(0, 6).map(name => ({
-      name,
-      image: `https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop`
-    }));
-
-    const mockResults: AnalysisResult = {
-      language: language || 'Any',
-      artists_analyzed: artists.length,
-      artist_data: artistData,
-      genre_distribution: genreDistribution,
-      dominant_genres: dominantGenres,
-      taste_profile: tasteProfile,
-      underrated_recommendations: underratedRecs,
-      popular_recommendations: popularRecs,
-      total_genres_found: Object.keys(genreCounts).length
-    };
-    
-    setResults(mockResults);
-    setIsAnalyzing(false);
   };
 
   return (
@@ -140,9 +285,24 @@ function App() {
               </div>
             </div>
             <nav className="hidden md:flex space-x-8">
-              <a href="#analyze" className="text-white/80 hover:text-white transition-colors">Analyze</a>
-              <a href="#discover" className="text-white/80 hover:text-white transition-colors">Discover</a>
-              <a href="#about" className="text-white/80 hover:text-white transition-colors">About</a>
+              <button
+                onClick={() => setDialogOpen('analyze')}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                Analyze
+              </button>
+              <button
+                onClick={() => setDialogOpen('discover')}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                Discover
+              </button>
+              <button
+                onClick={() => setDialogOpen('about')}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                About
+              </button>
             </nav>
           </div>
         </div>
@@ -208,6 +368,26 @@ function App() {
 
       {/* Loading Overlay */}
       {isAnalyzing && <LoadingOverlay />}
+
+      {/* Dialogs for About, Analyze, Discover sections */}
+      {dialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 p-6 max-w-lg w-full relative shadow-2xl">
+            <button
+              onClick={() => setDialogOpen(null)}
+              className="absolute top-3 right-3 text-white/70 hover:text-white text-2xl font-bold"
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <div>
+              {dialogOpen === 'about' && <AboutSection />}
+              {dialogOpen === 'analyze' && <AnalyzeSection />}
+              {dialogOpen === 'discover' && <DiscoverSection />}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="relative z-10 bg-black/20 backdrop-blur-md border-t border-white/10 mt-20">

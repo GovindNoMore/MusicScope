@@ -1,25 +1,18 @@
 export interface AnalysisResult {
-  language: string;
   artists_analyzed: number;
-  artist_data: {
-    name: string;
-    genres: string[];
-    image: string;
-  }[];
-  genre_distribution: {
-    genre: string;
-    count: number;
-    percentage: number;
-  }[];
-  dominant_genres: string[];
-  taste_profile: string;
-  underrated_recommendations: {
-    name: string;
-    image: string;
-  }[];
-  popular_recommendations: {
-    name: string;
-    image: string;
-  }[];
   total_genres_found: number;
+  language: string;
+  taste_profile: string;
+  artist_data: ArtistData[];
+  dominant_genres: string[];
+  genre_distribution: { genre: string; percentage: number }[];
+  underrated_recommendations: ArtistData[]; // <-- changed this line
+  popular_recommendations: ArtistData[];
+}
+
+export interface ArtistData {
+  name: string;
+  image: string;
+  genres: string[];
+  spotifyUrl?: string;
 }
